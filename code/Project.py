@@ -1,4 +1,3 @@
-
 import feedparser, re, string, nltk
 import pandas as pd
 import numpy as np
@@ -28,7 +27,7 @@ def load_eprint_df(query = 'cat:hep-th', max_step_results = 500, pub_window = re
             sleep(0.1)
         # Create new DataFrame and append to old one
         new_eprint_df = pd.DataFrame(data = data.entries)
-        if not "published" in new_eprint_df.columns:
+        if not 'published' in new_eprint_df.columns:
             break
         pub_dates = new_eprint_df.published.apply(pd.to_datetime)
         in_time_window = pub_dates >= min_pub_date
@@ -97,7 +96,7 @@ nltk.download('words');
 
 # Obtain 1 year of hep-th arvix eprint data and save
 eprint_df = load_eprint_df(query = 'cat:hep-th', max_step_results = 500, pub_window = relativedelta(years = 1))
-eprint_df.to_csv("eprint_df.csv")
+eprint_df.to_csv('../csv/eprint_df.csv')
 
 # Initialize helper variables
 stop_words = set(stopwords.words('english'))
@@ -120,18 +119,22 @@ for i in range(eprint_df.shape[0]):
     norm_word_counts[i] = Counter(norm_words)
 
 # Add normalized word counts to DataFrame
-eprint_df["norm_words"] = pd.Series(norm_word_counts, index = eprint_df.index)
+eprint_df['norm_words'] = pd.Series(norm_word_counts, index = eprint_df.index)
 
 # Extract most common normalized words and their frequencies
 words, total_freqs = zip(*eprint_df.norm_words.sum().most_common())
 
 # Create new DataFrame from most common normalized words and their frequencies
-norm_word_counts_df = pd.DataFrame(data = list(total_freqs), index = list(words), columns = ["total"])
+norm_word_counts_df = pd.DataFrame(data = list(total_freqs), index = list(words), columns = ['total'])
 
 # Send DataFrame through a bandpass filter removing least common words, and 
 # extraordinarily (likely not technical terms) common ones
 norm_word_counts_df = norm_word_counts_df[norm_word_counts_df.total > 10]
 norm_word_counts_df = norm_word_counts_df[norm_word_counts_df.total < norm_word_counts_df.total.mean() + norm_word_counts_df.total.std()]
+
+# Create array for totals and remove column from DataFrame
+total_freqs = norm_word_counts_df.total.as_matrix()
+norm_word_counts_df = norm_word_counts_df.drop(columns = 'total')
 
 # Extract most common normalized words and their frequencies for successive 6 month windows, 
 # each offset by 1 week. Add these as new columns to DataFrame
@@ -146,9 +149,11 @@ while today >= pub_dates.min() + window:
     norm_word_counts_df[today] = pd.Series(list(offset_freqs), index = list(offset_words))
     today -= offset
 
-# Fill null cells with zeroes and reverse column order, so left to right increases in time. Save to .csv
+# Fill null cells with zeroes and reverse column order, so left to right increases in time. Sort rows.
+# Save to .csv
 norm_word_counts_df = norm_word_counts_df.fillna(0).iloc[:, ::-1]
-norm_word_counts_df.to_csv("norm_word_counts_df.csv")
+norm_word_counts_df.sort_values(by = list(norm_word_counts_df.columns[::-1]), axis = 0, ascending = False, inplace = True)
+norm_word_counts_df.to_csv('../csv/norm_word_counts_df.csv')
 
 # Generate a word cloud of the 200 most common words for the full 1 year period
 norm_text = ' '.join(norm_word_counts_df.index)
@@ -163,33 +168,32 @@ ax.imshow(wordcloud, interpolation = 'bilinear')
 ax.axis("off")
 plt.show()
 fig.set_size_inches(18.5, 10.5)
-fig.savefig('wordcloud.png', dpi = 100, bbox_inches='tight')
+fig.savefig('../imgs/wordcloud.png', dpi = 100, bbox_inches = 'tight')
 
 # Plot a bar graph (essentially a histogram) for the word frequencies over the full 1 year period
 labels = norm_word_counts_df.index
-freqs = norm_word_counts_df.total.as_matrix()
 
 indexes = np.arange(len(labels))
 
 fig, ax = plt.subplots(figsize = (25, 8))
-ax.bar(indexes, freqs, width = 1)
+ax.bar(indexes, total_freqs, width = 1)
 ax.set_xticks(indexes)
 ax.set_xticklabels(labels, rotation = 90)
 plt.show()
 fig.set_size_inches(18.5, 10.5)
-fig.savefig('histogram.png', dpi = 100, bbox_inches='tight')
+fig.savefig('../imgs/histogram.png', dpi = 100, bbox_inches = 'tight')
 
 # Plot a (truncated) heatmap for the word frequencies in all 6 month periods
 fig, ax = plt.subplots(figsize = (25, 8))
-sns.heatmap(norm_word_counts_df.drop(columns = "total").iloc[:100], linewidths = 0, annot = False, ax = ax)
+sns.heatmap(norm_word_counts_df.iloc[:100], linewidths = 0, annot = False, ax = ax)
 plt.show()
 fig.set_size_inches(18.5, 10.5)
-fig.savefig('heatmap_freq.png', dpi = 100, bbox_inches='tight')
+fig.savefig('../imgs/heatmap_freq.png', dpi = 100, bbox_inches = 'tight')
 
 # Plot a (truncated) heatmap of fractions of each word's total 1 year frequency, in all 6 month periods
 fig, ax = plt.subplots(figsize = (25, 8))
-norm_word_count_fracs_df = norm_word_counts_df.div(norm_word_counts_df.total, axis = 0)
-sns.heatmap(norm_word_count_fracs_df.drop(columns = "total").iloc[:1000], linewidths = 0, annot = False, ax = ax)
+norm_word_count_fracs_df = norm_word_counts_df.div(total_freqs, axis = 0)
+sns.heatmap(norm_word_count_fracs_df.iloc[:1000], linewidths = 0, annot = False, ax = ax)
 plt.show()
 fig.set_size_inches(18.5, 10.5)
-fig.savefig('heatmap_frac.png', dpi = 100, bbox_inches='tight')
+fig.savefig('../imgs/heatmap_frac.png', dpi = 100, bbox_inches = 'tight')
