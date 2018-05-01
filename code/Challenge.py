@@ -1,18 +1,55 @@
-# Question 1
+# <h1>Question 1</h1>
 
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from random import randint, seed as randseed
+from itertools import combinations
+sns.set();
+
+def compute_paths(m, n):
+    step_perms = np.empty((0, m + n), dtype = float)
+    for c in combinations(range(m + n), m):
+        step_perms = np.resize(step_perms, (step_perms.shape[0] + 1, step_perms.shape[1]))
+        step_perms[step_perms.shape[0] - 1, :] = 0
+        step_perms[step_perms.shape[0] - 1, c] = 1
+    
+    x_pos = step_perms
+    y_pos = 1 - step_perms.copy()
+    
+    for col in reversed(range(step_perms.shape[1])):
+        x_pos[:, col] = x_pos[:, :col + 1].sum(axis = 1)
+        y_pos[:, col] = y_pos[:, :col + 1].sum(axis = 1)
+    
+    x_pos = np.append(np.zeros((x_pos.shape[0], 1), dtype = float), x_pos, axis = 1)
+    y_pos = np.append(np.zeros((y_pos.shape[0], 1), dtype = float), y_pos, axis = 1)
+    
+    step_D = abs((x_pos / m) - (y_pos / n))
+    D = step_D.max(axis = 1)
+    ind = step_D.argmax(axis = 1)
+    
+    x_max = np.empty(ind.size, dtype = int)
+    y_max = np.empty(ind.size, dtype = int)
+    for i in range(ind.size):
+        x_max[i] = int(x_pos[i, ind[i]])
+        y_max[i] = int(y_pos[i, ind[i]])
+    
+    return x_pos, y_pos, x_max, y_max, D
+
+def cond_prob(D, a, b):
+    a_inds = (D > a).nonzero()[0]
+    b_inds = (D > b).nonzero()[0]
+    ab_inds = np.intersect1d(a_inds, b_inds)
+    return ab_inds.size / b_inds.size
 
 class AntWalk:
     def __init__(self, m, n, seed = None):
         randseed(seed) # For reproducibility
         self.m = m
         self.n = n
-        self.x = np.zeros(1, dtype = int)
-        self.y = np.zeros(1, dtype = int)
-        self.D_arr = np.empty(1, dtype = float)
-        self.D_arr[0] = self.__walk_path()
+        self.x_pos = np.zeros((0, m + n + 1), dtype = int)
+        self.y_pos = np.zeros((0, m + n + 1), dtype = int)
+        self.D = np.zeros(0, dtype = float)
     
     def __find_step_deviation(self, x, y):
         x_frac = x / self.m
@@ -20,79 +57,117 @@ class AntWalk:
         return abs(x_frac - y_frac)
     
     def __walk_path(self):
-        self.x = np.zeros(1, dtype = int)
-        self.y = np.zeros(1, dtype = int)
+        x_pos = np.zeros(self.m + self.n, dtype = int)
+        y_pos = np.zeros(self.m + self.n, dtype = int)
+        x = 0
+        y = 0
         D_path = 0
-        while self.x[-1] < self.m or self.y[-1] < self.n:
+        i = 0
+        while x < self.m or y < self.n:
             axis = randint(0, 1)
             if axis == 0:
-                if self.x[-1] < self.m:
-                    self.x = np.append(self.x, self.x[-1] + 1)
-                    self.y = np.append(self.y, self.y[-1])
+                if x < self.m:
+                    x += 1
                 else:
-                    self.x = np.append(self.x, self.x[-1])
-                    self.y = np.append(self.y, self.y[-1] + 1)
+                    return None
+                    y += 1
             elif axis == 1:
-                if self.y[-1] < self.n:
-                    self.x = np.append(self.x, self.x[-1])
-                    self.y = np.append(self.y, self.y[-1] + 1)
+                if y < self.n:
+                    y += 1
                 else:
-                    self.x = np.append(self.x, self.x[-1] + 1)
-                    self.y = np.append(self.y, self.y[-1])
-            
-            D_step = self.__find_step_deviation(self.x[-1], self.y[-1])
+                    return None
+                    x += 1
+            x_pos[i] = x
+            y_pos[i] = y
+            D_step = self.__find_step_deviation(x, y)
             if D_step > D_path:
                 D_path = D_step
+            i += 1
+        
+        self.x_pos.resize((self.x_pos.shape[0] + 1, self.m + self.n + 1))
+        self.x_pos[-1, 1:] = x_pos
+        
+        self.y_pos.resize((self.y_pos.shape[0] + 1, self.m + self.n + 1))
+        self.y_pos[-1, 1:] = y_pos
         
         return D_path
     
-    def run(self, n = 100000):
-        new_D = self.__walk_path()
-        new_D_arr = np.append(self.D_arr, new_D)
-        for i in range(n):
-            self.D_arr = new_D_arr
+    def run(self, N = 100000):
+        i = 0
+        while i < N:
             new_D = self.__walk_path()
-            new_D_arr = np.append(self.D_arr, new_D)
+            if new_D:
+                self.D.resize(self.D.size + 1)
+                self.D[-1] = new_D
+                i += 1
     
-    def plot_last_walk(self):
+    def plot_walks(self, N = 1):
         fig, ax = plt.subplots(figsize = (self.m / 2, self.n / 2))
-        ax.plot(self.x, self.y, color = 'blue')
+        for i in np.random.randint(0, self.x_pos.shape[0], N):
+            ax.plot(self.x_pos[i], self.y_pos[i], color = np.random.rand(3))
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.xaxis.set_ticks(np.arange(self.m + 1))
         ax.yaxis.set_ticks(np.arange(self.n + 1))
-        ax.grid()
+        ax.grid(True)
+        plt.show()
+    
+    def heatmap_walks(self):
+        h_map = np.zeros((self.m + 1, self.n + 1), dtype = int)
+        for i in range(self.x_pos.shape[0]):
+            h_map[self.x_pos[i], self.y_pos[i]] += 1
+        fig, ax = plt.subplots(figsize = (self.m / 2 , self.n / 2))
+        sns.heatmap(h_map, linewidths = 0, annot = False, ax = ax)
+        ax.invert_yaxis()
         plt.show()
     
     def mean(self):
-        return self.D_arr.mean()
+        return self.D.mean()
     
     def std(self):
-        return self.D_arr.std()
+        return self.D.std()
     
     def cond_prob(self, a, b):
-        a_inds = (self.D_arr > a).nonzero()[0]
-        b_inds = (self.D_arr > b).nonzero()[0]
+        a_inds = (self.D > a).nonzero()[0]
+        b_inds = (self.D > b).nonzero()[0]
         ab_inds = np.intersect1d(a_inds, b_inds)
         return ab_inds.size / b_inds.size
 
-W1 = AntWalk(11, 7, seed = 7)
-W1.run()
+# Exact answer
+x_pos, y_pos, x_max, y_max, D = compute_paths(11, 7)
+print("Mean: {}".format("%0.10f" % D.mean()))
+print("Standard Deviation: {}".format("%0.10f" % D.std()))
+print("Conditional Probability of {0}, given {1}: {2}".format(0.6, 0.2, "%0.10f" % cond_prob(D, 0.6, 0.2)))
+
+# 5.E5 random walks, after dropping paths that overshoot grid
+W1 = AntWalk(11, 7, seed = None)
+W1.run(5e5)
 print("Mean: {}".format("%0.10f" % W1.mean()))
 print("Standard Deviation: {}".format("%0.10f" % W1.std()))
 print("Conditional Probability of {0}, given {1}: {2}".format(0.6, 0.2, "%0.10f" % W1.cond_prob(0.6, 0.2)))
 
-W1.plot_last_walk()
+W1.plot_walks()
 
-W2 = AntWalk(23, 31, seed = 7)
-W2.run()
+W1.heatmap_walks()
+
+# Exact answer (doesn't finish)
+x_pos, y_pos, x_max, y_max, D = compute_paths(23, 31)
+print("Mean: {}".format("%0.10f" % D.mean()))
+print("Standard Deviation: {}".format("%0.10f" % D.std()))
+print("Conditional Probability of {0}, given {1}: {2}".format(0.6, 0.2, "%0.10f" % cond_prob(D, 0.6, 0.2)))
+
+# 5.E5 random walks, after dropping paths that overshoot grid
+W2 = AntWalk(23, 31, seed = None)
+W2.run(5e5)
 print("Mean: {}".format("%0.10f" % W2.mean()))
 print("Standard Deviation: {}".format("%0.10f" % W2.std()))
 print("Conditional Probability of {0}, given {1}: {2}".format(0.6, 0.2, "%0.10f" % W2.cond_prob(0.6, 0.2)))
 
-W2.plot_last_walk()
+W2.plot_walks()
 
-# Question 2
+W2.heatmap_walks()
+
+# <h1>Question 2</h1>
 
 import pandas as pd
 import numpy as np
